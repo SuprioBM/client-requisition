@@ -46,7 +46,10 @@ Places + Groq APIs through the Next.js dashboard.
 | Next.js operations dashboard (`web/`) — real-time SSE, no manual refresh | ✅ |
 | Tests (unit / integration / failure / frontend / e2e), Docker, docs | ✅ |
 
-See `docs/` for detail on each phase and `web/README.md` for the dashboard.
+**[`ARCHITECTURE.md`](ARCHITECTURE.md)** — the full end-to-end architecture:
+every process, connection and data flow (frontend + backend + worker + LangGraph
++ every external service), plus how to run it and what you still need to set up.
+`docs/` has per-phase detail; `web/README.md` covers the dashboard.
 
 ---
 

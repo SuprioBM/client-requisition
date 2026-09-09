@@ -1,9 +1,13 @@
-# Architecture
+# Architecture (overview)
+
+> **The full end-to-end architecture — every connection, data flow, and how to
+> run the project — is in [`../ARCHITECTURE.md`](../ARCHITECTURE.md).**
+> This file is a short conceptual overview.
 
 This document describes **implemented** behavior. Companion docs:
-[discovery](discovery.md) · [research](research.md) · [evaluation](evaluation.md) ·
-[outreach](outreach.md) · [database](database.md) · [error-handling](error-handling.md) ·
-[deployment](deployment.md).
+[frontend](frontend.md) · [discovery](discovery.md) · [research](research.md) ·
+[evaluation](evaluation.md) · [outreach](outreach.md) · [database](database.md) ·
+[error-handling](error-handling.md) · [deployment](deployment.md).
 
 ## Phases & separation of concerns
 
