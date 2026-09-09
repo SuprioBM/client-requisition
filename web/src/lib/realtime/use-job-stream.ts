@@ -2,7 +2,7 @@
 
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
-import { API_BASE } from "@/lib/api/client";
+import { SSE_BASE } from "@/lib/api/client";
 import { qk } from "@/lib/query/keys";
 import type { Job } from "@/lib/api/types";
 
@@ -23,7 +23,7 @@ export function useJobStream(jobId: string | undefined) {
   useEffect(() => {
     if (!jobId) return;
     setState("connecting");
-    const es = new EventSource(`${API_BASE}/api/v1/jobs/${jobId}/stream`);
+    const es = new EventSource(`${SSE_BASE}/api/v1/jobs/${jobId}/stream`);
 
     es.addEventListener("open", () => setState("open"));
 

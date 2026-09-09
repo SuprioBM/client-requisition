@@ -57,11 +57,12 @@ cp .env.example .env.local        # BACKEND_URL, optional BACKEND_API_KEY
 npm run dev                        # http://localhost:3000
 ```
 
-`.env.local` (server-only — no `NEXT_PUBLIC_` prefix):
+`.env.local`:
 
 ```
-BACKEND_URL=http://localhost:8000
-BACKEND_API_KEY=                   # set to match the backend's API_KEY in production
+BACKEND_URL=http://localhost:8000   # server-only
+BACKEND_API_KEY=                    # server-only; match the backend's API_KEY in production
+NEXT_PUBLIC_SSE_BASE=               # optional; backend public origin for direct SSE (Vercel) — see docs/deployment.md
 ```
 
 ## Commands

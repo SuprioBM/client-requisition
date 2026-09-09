@@ -1,0 +1,139 @@
+# Render blueprint — FastAPI API + background worker + Postgres + Redis.
+# Deploy: push this repo, then in the Render dashboard "New +" -> "Blueprint".
+# After the first deploy, set the secret env vars marked `sync: false` below
+# (GROQ_API_KEY, GOOGLE_MAPS_API_KEY, ...) and set API_KEY to a strong value,
+# then use that same value as BACKEND_API_KEY in the Vercel frontend.
+#
+# Free tier notes: web services sleep after 15 min idle (first request ~30 s);
+# free Postgres is deleted after 90 days. Use paid instances for anything real.
+
+databases:
+  - name: cra-postgres
+    plan: free          # -> "starter" or higher for production
+    databaseName: requisition
+    user: requisition
+
+services:
+  # ---- Redis / Key Value ----
+  # If your Render account shows "Key Value" instead of "Redis", change
+  # `type: redis` -> `type: keyvalue` here and in the `fromService` refs below.
+  - type: redis
+    name: cra-redis
+    plan: free          # -> "starter"+ for production
+    ipAllowList: []      # only reachable from Render services
+    maxmemoryPolicy: noeviction
+
+  # ---- FastAPI API ----
+  - type: web
+    name: cra-api
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: free           # -> "starter"+ for production
+    healthCheckPath: /health
+    # run migrations before each deploy goes live
+    preDeployCommand: alembic upgrade head
+    dockerCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: APP_ENV
+        value: production
+      - key: DEBUG
+        value: "false"
+      - key: PORT
+        value: "8000"
+      - key: DATABASE_URL
+        fromDatabase:
+          name: cra-postgres
+          property: connectionString      # postgresql://...  (config auto-adds +asyncpg)
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: cra-redis
+          property: connectionString
+      - key: API_KEY
+        generateValue: true               # copy this into Vercel as BACKEND_API_KEY
+      - key: CORS_ORIGINS
+        sync: false                        # set to your Vercel URL(s), comma-separated
+      - key: GROQ_API_KEY
+        sync: false
+      - key: GROQ_MODEL
+        value: openai/gpt-oss-120b
+      - key: GOOGLE_MAPS_API_KEY
+        sync: false
+      - key: BRAVE_SEARCH_API_KEY
+        sync: false
+      - key: TAVILY_API_KEY
+        sync: false
+      - key: RUN_EMBEDDED_WORKER
+        value: "false"                     # the dedicated worker service handles jobs
+      - key: PLAYWRIGHT_ENABLED
+        value: "true"                      # image already has chromium
+      - key: LANGGRAPH_CHECKPOINT_DB
+        fromDatabase:
+          name: cra-postgres
+          property: connectionString       # multi-worker-safe checkpointer
+      - key: OUTREACH_SENDER_NAME
+        sync: false
+      # optional real email sending:
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_PORT
+        sync: false
+      - key: SMTP_FROM
+        sync: false
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASSWORD
+        sync: false
+
+  # ---- Background worker (no HTTP port) ----
+  - type: worker
+    name: cra-worker
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: free            # -> "starter"+ for production
+    dockerCommand: python -m app.workers.worker
+    envVars:
+      - key: APP_ENV
+        value: production
+      - key: DATABASE_URL
+        fromDatabase:
+          name: cra-postgres
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: cra-redis
+          property: connectionString
+      - key: API_KEY
+        fromService:
+          type: web
+          name: cra-api
+          envVarKey: API_KEY
+      - key: GROQ_API_KEY
+        sync: false
+      - key: GROQ_MODEL
+        value: openai/gpt-oss-120b
+      - key: GOOGLE_MAPS_API_KEY
+        sync: false
+      - key: BRAVE_SEARCH_API_KEY
+        sync: false
+      - key: TAVILY_API_KEY
+        sync: false
+      - key: PLAYWRIGHT_ENABLED
+        value: "true"
+      - key: LANGGRAPH_CHECKPOINT_DB
+        fromDatabase:
+          name: cra-postgres
+          property: connectionString
+      - key: OUTREACH_SENDER_NAME
+        sync: false
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_PORT
+        sync: false
+      - key: SMTP_FROM
+        sync: false
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASSWORD
+        sync: false

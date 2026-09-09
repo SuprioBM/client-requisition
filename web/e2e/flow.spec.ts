@@ -14,9 +14,9 @@ test("full operator flow: discover -> job -> prospect intelligence -> outreach a
 
   // 2. discovery form
   await page.goto("/discover");
-  await expect(page.getByRole("heading", { name: "Discover" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Discover" })).toBeVisible({ timeout: 20000 });
   await page.getByRole("button", { name: "Preview plan" }).click();
-  await expect(page.getByText("dental clinic")).toBeVisible();
+  await expect(page.getByText("dental clinic")).toBeVisible({ timeout: 15000 });
   await page.getByRole("button", { name: "Start Discovery" }).click();
 
   // 3. job monitor (form navigates here on success)

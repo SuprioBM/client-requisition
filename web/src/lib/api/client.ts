@@ -1,11 +1,22 @@
 import type { ApiEnvelope } from "./types";
 
 /**
- * All requests go through the same-origin Next proxy (`/api/backend/*`), which
- * injects the backend base URL + API key server-side. See
+ * All JSON requests go through the same-origin Next proxy (`/api/backend/*`),
+ * which injects the backend base URL + API key server-side. See
  * `src/app/api/backend/[...path]/route.ts`.
  */
 export const API_BASE = "/api/backend";
+
+/**
+ * Base for the SSE job stream only. On a platform where serverless functions
+ * time out mid-stream (e.g. Vercel), set `NEXT_PUBLIC_SSE_BASE` to the backend's
+ * public origin so the browser's EventSource connects to it directly. The stream
+ * endpoint is an unauthenticated GET, so this exposes no secret — but the
+ * backend must then allow the dashboard origin via `CORS_ORIGINS`. Unset (the
+ * default) → the stream also goes through the proxy.
+ */
+export const SSE_BASE =
+  process.env.NEXT_PUBLIC_SSE_BASE?.replace(/\/$/, "") || API_BASE;
 
 export class ApiError extends Error {
   code: string;

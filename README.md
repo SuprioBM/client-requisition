@@ -106,6 +106,13 @@ docker compose up --build
 
 Postgres + Redis + API (migrates first) + worker.
 
+## Deploy — Vercel + Render
+
+The repo ships **`render.yaml`** (a Render Blueprint: API + worker + Postgres +
+Redis). Full step-by-step — Render Blueprint, Vercel project, the SSE /
+serverless-timeout handling, free-tier caveats, post-deploy smoke test — is in
+[`docs/deployment.md`](docs/deployment.md#deploy-vercel-frontend--render-backend).
+
 ## Worker (production / separate process)
 
 ```bash

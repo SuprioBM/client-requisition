@@ -632,14 +632,15 @@ never receives any of them.
 > The loader defensively strips inline `# comments` from `.env` values
 > (`_strip_inline_comments`), because pydantic-settings does not.
 
-### 13.2 Frontend — `web/.env.local` (server-only, **no `NEXT_PUBLIC_`**)
+### 13.2 Frontend — `web/.env.local`
 
-| Var | Purpose |
-|---|---|
-| `BACKEND_URL` | where the Next proxy forwards (default `http://localhost:8000`) |
-| `BACKEND_API_KEY` | injected as `X-API-Key` by the proxy; set to match backend `API_KEY` in production |
+| Var | Scope | Purpose |
+|---|---|---|
+| `BACKEND_URL` | **server-only** | where the Next proxy forwards (default `http://localhost:8000`) |
+| `BACKEND_API_KEY` | **server-only** | injected as `X-API-Key` by the proxy; set to match backend `API_KEY` in production |
+| `NEXT_PUBLIC_SSE_BASE` | public (optional) | if set, the browser's `EventSource` connects the job stream **directly** to this backend origin instead of through the proxy — needed on platforms whose serverless functions time out mid-stream (Vercel). The stream endpoint is an unauthenticated GET, so no secret is exposed; the backend must list the dashboard origin in `CORS_ORIGINS`. |
 
-No provider/LLM keys ever go here.
+No provider/LLM keys ever go in the frontend.
 
 ---
 
@@ -709,16 +710,22 @@ docker compose up --build
 ### 15.3 Production shape
 
 ```
-[Next.js (Vercel / node)]  →  [FastAPI behind a reverse proxy]  →  [managed Postgres]
-                                        │                          [managed Redis]
-                                  [1..N Worker processes]  (python -m app.workers.worker)
+[Next.js (Vercel)]  →  [FastAPI web service]  →  [managed Postgres]
+                              │                  [managed Redis]
+                        [1..N Worker processes]  (python -m app.workers.worker)
 ```
 
 - `APP_ENV=production`, set `API_KEY` (backend) and the matching
   `BACKEND_API_KEY` (frontend), set real `DATABASE_URL` + `REDIS_URL`,
   set `CORS_ORIGINS` to the dashboard origin, `RUN_EMBEDDED_WORKER=false`.
+- On Vercel also set `NEXT_PUBLIC_SSE_BASE` to the backend origin (see § 13.2).
 - For multiple workers set `LANGGRAPH_CHECKPOINT_DB` to a `postgresql://` URL.
-- `docs/deployment.md` has the full checklist.
+
+**Deploy to Vercel + Render:** the repo ships **`render.yaml`** (a Render
+Blueprint provisioning API + worker + Postgres + Redis). The full step-by-step —
+Render Blueprint setup, Vercel project config, the SSE/serverless-timeout
+handling, free-tier caveats, and a post-deploy smoke test — is in
+[`docs/deployment.md`](docs/deployment.md#deploy-vercel-frontend--render-backend).
 
 ### 15.4 Tests / checks
 
@@ -809,6 +816,8 @@ BACKEND
   app/outreach/providers.py         OutreachProvider: Null | SMTP
   app/services/{job,discovery,research,evaluation,outreach}_service.py
   scripts/run_e2e.py                real end-to-end smoke test
+  render.yaml                       Render Blueprint (API + worker + Postgres + Redis)
+  Dockerfile / docker-compose.yml   container build + local full stack
 
 FRONTEND (web/)
   src/app/api/backend/[...path]/route.ts   the proxy
