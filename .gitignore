@@ -22,3 +22,11 @@ build/
 node_modules/
 .idea/
 .vscode/
+
+web/node_modules/
+web/.next/
+web/out/
+web/.env.local
+web/coverage/
+web/playwright-report/
+web/test-results/
