@@ -1,0 +1,276 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Client Requisition Agent</title>
+<style>
+  :root { --bg:#0f1115; --panel:#181b22; --line:#2a2f3a; --fg:#e6e8ec; --muted:#9aa3b2;
+          --accent:#5b9dff; --good:#3ecf8e; --warn:#ffb454; --bad:#ff6b6b; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg); font:14px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif; }
+  header { padding:14px 20px; border-bottom:1px solid var(--line); display:flex; gap:16px; align-items:center; }
+  header h1 { font-size:15px; margin:0; font-weight:600; }
+  header .env { color:var(--muted); font-size:12px; }
+  main { display:grid; grid-template-columns:360px 1fr; gap:0; height:calc(100vh - 51px); }
+  .col { overflow:auto; padding:16px; }
+  .col.left { border-right:1px solid var(--line); }
+  .panel { background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:14px; margin-bottom:14px; }
+  h2 { font-size:12px; text-transform:uppercase; letter-spacing:.08em; color:var(--muted); margin:0 0 10px; }
+  label { display:block; font-size:12px; color:var(--muted); margin:8px 0 3px; }
+  input, select, textarea { width:100%; background:#0d0f13; border:1px solid var(--line); color:var(--fg);
+    border-radius:7px; padding:8px; font:inherit; }
+  button { background:var(--accent); color:#04101f; border:0; border-radius:7px; padding:8px 12px;
+    font-weight:600; cursor:pointer; }
+  button.ghost { background:transparent; color:var(--fg); border:1px solid var(--line); }
+  button.good { background:var(--good); } button.bad { background:var(--bad); color:#fff; }
+  button:disabled { opacity:.5; cursor:not-allowed; }
+  .row { display:flex; gap:8px; flex-wrap:wrap; }
+  .row > * { flex:1; }
+  .prospect { padding:10px; border:1px solid var(--line); border-radius:8px; margin-bottom:8px; cursor:pointer; }
+  .prospect:hover { border-color:var(--accent); }
+  .prospect .name { font-weight:600; }
+  .prospect .meta { color:var(--muted); font-size:12px; }
+  .badge { display:inline-block; padding:1px 7px; border-radius:20px; font-size:11px; border:1px solid var(--line); }
+  .badge.good { color:var(--good); border-color:var(--good); }
+  .badge.warn { color:var(--warn); border-color:var(--warn); }
+  .badge.bad { color:var(--bad); border-color:var(--bad); }
+  .evidence { border-left:2px solid var(--line); padding:6px 10px; margin:6px 0; font-size:13px; }
+  .evidence .src { color:var(--muted); font-size:11px; }
+  .kv { display:grid; grid-template-columns:150px 1fr; gap:4px 12px; font-size:13px; }
+  .kv div:nth-child(odd) { color:var(--muted); }
+  .scorebars div { display:flex; align-items:center; gap:8px; margin:3px 0; font-size:12px; }
+  .scorebars .track { flex:1; height:7px; background:#0d0f13; border-radius:4px; overflow:hidden; }
+  .scorebars .fill { height:100%; background:var(--accent); }
+  pre { white-space:pre-wrap; background:#0d0f13; border:1px solid var(--line); border-radius:7px; padding:10px; font-size:12px; }
+  .muted { color:var(--muted); }
+  a { color:var(--accent); }
+  .toast { position:fixed; bottom:16px; right:16px; background:var(--panel); border:1px solid var(--line);
+    padding:10px 14px; border-radius:8px; max-width:340px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Client Requisition Agent</h1>
+  <span class="env" id="env"></span>
+  <span class="env" id="caps"></span>
+</header>
+<main>
+  <div class="col left">
+    <div class="panel">
+      <h2>Discover</h2>
+      <label>Country</label><input id="country" value="Bangladesh" />
+      <label>City</label><input id="city" value="Dhaka" />
+      <label>Industry</label><input id="industry" value="dentist" />
+      <div class="row">
+        <div><label>Radius km</label><input id="radius" type="number" value="10" /></div>
+        <div><label>Target leads</label><input id="target" type="number" value="15" /></div>
+      </div>
+      <label>API key (X-API-Key)</label><input id="apikey" placeholder="only if server enforces it" />
+      <div style="margin-top:10px" class="row">
+        <button id="btnSearch">Start discovery</button>
+        <button class="ghost" id="btnRefresh">Refresh list</button>
+      </div>
+      <div id="jobStatus" class="muted" style="margin-top:8px"></div>
+    </div>
+    <div class="panel">
+      <h2>Prospects</h2>
+      <div class="row" style="margin-bottom:8px">
+        <input id="filterCity" placeholder="city filter" />
+        <select id="sort">
+          <option value="created_at">newest</option>
+          <option value="rating">rating</option>
+          <option value="review_count">reviews</option>
+        </select>
+      </div>
+      <div id="prospectList"></div>
+    </div>
+  </div>
+  <div class="col right" id="detail">
+    <div class="panel muted">Select a prospect, or start a discovery job.</div>
+  </div>
+</main>
+<div id="toast"></div>
+<script>
+const $ = s => document.querySelector(s);
+const api = async (path, opts={}) => {
+  const headers = Object.assign({'Content-Type':'application/json'}, opts.headers||{});
+  const key = $('#apikey').value.trim();
+  if (key) headers['X-API-Key'] = key;
+  const r = await fetch(path, Object.assign({}, opts, {headers}));
+  const j = await r.json().catch(()=>({success:false,error:{message:'bad json'}}));
+  if (!j.success && j.error) throw new Error(j.error.code + ': ' + j.error.message);
+  return j.data;
+};
+const toast = (msg, ms=4000) => {
+  const t = document.createElement('div'); t.className='toast'; t.textContent=msg;
+  $('#toast').appendChild(t); setTimeout(()=>t.remove(), ms);
+};
+const badge = (txt, cls='') => `<span class="badge ${cls}">${txt}</span>`;
+
+async function boot(){
+  try {
+    const d = await api('/health/ready');
+    $('#env').textContent = 'env: ' + d.env;
+    $('#caps').textContent = Object.entries(d.capabilities).filter(([,v])=>v).map(([k])=>k.split('_')[0]).join(' · ');
+  } catch(e){ $('#env').textContent = 'server unreachable'; }
+  loadProspects();
+}
+
+async function loadProspects(){
+  const city = $('#filterCity').value.trim();
+  const sort = $('#sort').value;
+  const qs = new URLSearchParams({limit:'100', sort}); if(city) qs.set('city', city);
+  const d = await api('/api/v1/prospects?' + qs);
+  const el = $('#prospectList'); el.innerHTML = '';
+  (d.items||[]).forEach(p => {
+    const div = document.createElement('div'); div.className='prospect';
+    div.innerHTML = `<div class="name">${p.business_name}</div>
+      <div class="meta">${p.city||''} · ${p.canonical_domain||'no site'} · ${p.rating??'–'}★ (${p.review_count??0})
+      ${badge(p.status, p.status.startsWith('OUTREACH')?'good':'')}</div>`;
+    div.onclick = () => openProspect(p.id);
+    el.appendChild(div);
+  });
+  if(!(d.items||[]).length) el.innerHTML = '<div class="muted">No prospects yet.</div>';
+}
+
+$('#btnSearch').onclick = async () => {
+  $('#btnSearch').disabled = true; $('#jobStatus').textContent = 'submitting…';
+  try {
+    const body = JSON.stringify({
+      country:$('#country').value, city:$('#city').value, industry:$('#industry').value,
+      radius_km:Number($('#radius').value), target_leads:Number($('#target').value)});
+    const d = await api('/api/v1/discovery/search', {method:'POST', body});
+    pollJob(d.job_id);
+  } catch(e){ toast(e.message); $('#jobStatus').textContent=''; }
+  $('#btnSearch').disabled = false;
+};
+$('#btnRefresh').onclick = loadProspects;
+$('#filterCity').onchange = loadProspects; $('#sort').onchange = loadProspects;
+
+async function pollJob(id){
+  try {
+    const j = await api('/api/v1/jobs/' + id);
+    $('#jobStatus').textContent = `job ${id.slice(0,8)} · ${j.status} · ${j.current_stage||''}`;
+    if(['COMPLETED','COMPLETED_WITH_WARNINGS','FAILED','CANCELLED'].includes(j.status)){
+      if(j.status==='FAILED') toast('Job failed: ' + (j.error_code||''));
+      else toast('Job ' + j.status + (j.result?.prospects_created!=null? ` · +${j.result.prospects_created} prospects`:''));
+      loadProspects(); return;
+    }
+    setTimeout(()=>pollJob(id), 2000);
+  } catch(e){ $('#jobStatus').textContent = e.message; }
+}
+
+async function openProspect(id){
+  const el = $('#detail'); el.innerHTML = '<div class="panel muted">Loading…</div>';
+  let prof;
+  try { prof = await api('/api/v1/prospects/' + id + '/profile'); }
+  catch(e){ el.innerHTML = '<div class="panel">'+e.message+'</div>'; return; }
+  const b = prof.business, r = prof.research, ev = prof.evaluation;
+  const parts = [];
+  parts.push(`<div class="panel"><h2>Business</h2>
+    <div class="kv">
+      <div>Name</div><div>${b.name}</div>
+      <div>Industry</div><div>${b.industry||'–'}</div>
+      <div>Location</div><div>${[b.location.city,b.location.country].filter(Boolean).join(', ')}</div>
+      <div>Website</div><div>${b.website?`<a href="${b.website}" target="_blank">${b.website}</a>`:'–'}</div>
+      <div>Phone</div><div>${b.contact.phone||'–'}</div>
+      <div>Email</div><div>${b.contact.email||'–'}</div>
+      <div>Rating</div><div>${b.rating??'–'} (${b.review_count??0} reviews)</div>
+      <div>Status</div><div>${badge(b.status)}</div>
+    </div>
+    <div class="row" style="margin-top:10px">
+      <button data-act="research">Run research</button>
+      <button data-act="evaluate">Evaluate</button>
+      <button class="ghost" data-act="reload">Reload</button>
+    </div>
+    <div id="pjob" class="muted" style="margin-top:6px"></div>
+  </div>`);
+
+  if(r){
+    parts.push(`<div class="panel"><h2>Research · ${r.website_status||'?'}</h2>
+      <div class="muted" style="font-size:12px">social: ${Object.keys(r.social_profiles||{}).join(', ')||'none'}</div>
+      ${(r.evidence||[]).map(e=>`<div class="evidence">${e.observation}
+        <div class="src">${e.source} · confidence ${e.confidence} · ${e.source_url?`<a href="${e.source_url}" target="_blank">source</a>`:'no url'}</div></div>`).join('')}
+    </div>`);
+  }
+
+  if(ev){
+    const sc = ev.score||{};
+    const bar = (k,max)=>`<div><span style="width:120px">${k}</span>
+      <span class="track"><span class="fill" style="width:${(100*(sc[k]||0)/max)}%"></span></span>
+      <b>${sc[k]??0}/${max}</b></div>`;
+    parts.push(`<div class="panel"><h2>Evaluation</h2>
+      <div>${badge(ev.is_opportunity?'opportunity':'not an opportunity', ev.is_opportunity?'good':'bad')}
+           ${badge('commercial: '+(ev.commercial_potential||'?'), 'warn')}
+           ${badge('score '+(sc.total??'?')+'/100', 'good')}</div>
+      <p style="font-size:13px">${ev.opportunity_summary||''}</p>
+      <div class="scorebars">
+        ${bar('problem_severity',25)}${bar('business_value',25)}${bar('evidence_confidence',20)}
+        ${bar('solution_fit',20)}${bar('contactability',10)}
+      </div>
+      <h2 style="margin-top:12px">Pain points</h2>
+      ${(ev.pain_points||[]).map(p=>`<div class="evidence"><b>${p.title}</b> ${badge(p.confidence, p.confidence==='CONFIRMED'?'good':p.confidence==='NOT_ENOUGH_EVIDENCE'?'bad':'warn')}
+        <div style="font-size:12px">${p.description}</div>
+        <div class="src">category ${p.category} · evidence ${(p.evidence_ids||[]).length} item(s)</div></div>`).join('') || '<div class="muted">none</div>'}
+      <h2 style="margin-top:12px">Solutions</h2>
+      ${(ev.solutions||[]).map(s=>`<div class="evidence"><b>#${s.fit_rank} ${s.service_name}</b> <span class="muted">(${s.service_category})</span> ${badge(s.confidence,'warn')}
+        <div style="font-size:12px">${s.why_it_fits}</div>
+        <div class="src">value: ${s.expected_value}</div></div>`).join('') || '<div class="muted">none</div>'}
+      <pre>${(ev.opportunity_reasoning||'').slice(0,1200)}</pre>
+    </div>`);
+  }
+
+  parts.push(`<div class="panel"><h2>Outreach</h2>
+    <button data-act="genoutreach" ${ev?'':'disabled'}>Generate drafts</button>
+    <div id="outreachBox" style="margin-top:10px"></div></div>`);
+
+  el.innerHTML = parts.join('');
+  el.querySelectorAll('button[data-act]').forEach(btn => btn.onclick = () => actProspect(id, btn.dataset.act));
+  loadOutreach(id);
+}
+
+async function actProspect(id, act){
+  try {
+    if(act==='reload') return openProspect(id);
+    if(act==='research'){ const d=await api(`/api/v1/prospects/${id}/research`,{method:'POST'}); pollProspectJob(id, d.job_id); }
+    if(act==='evaluate'){ const d=await api(`/api/v1/prospects/${id}/evaluate`,{method:'POST'}); pollProspectJob(id, d.job_id); }
+    if(act==='genoutreach'){ await api(`/api/v1/prospects/${id}/outreach/generate`,{method:'POST'}); toast('drafts generated'); loadOutreach(id); }
+  } catch(e){ toast(e.message); }
+}
+async function pollProspectJob(id, jobId){
+  try {
+    const j = await api('/api/v1/jobs/'+jobId);
+    const box = $('#pjob'); if(box) box.textContent = `${j.job_type} · ${j.status} · ${j.current_stage||''}`;
+    if(['COMPLETED','COMPLETED_WITH_WARNINGS','FAILED'].includes(j.status)){
+      toast(`${j.job_type} ${j.status}`); openProspect(id); return;
+    }
+    setTimeout(()=>pollProspectJob(id, jobId), 2500);
+  } catch(e){ toast(e.message); }
+}
+
+async function loadOutreach(id){
+  const box = $('#outreachBox'); if(!box) return;
+  const msgs = await api(`/api/v1/prospects/${id}/outreach`);
+  if(!msgs.length){ box.innerHTML='<div class="muted">No drafts.</div>'; return; }
+  box.innerHTML = msgs.map(m=>`<div class="evidence">
+    <b>${m.channel}</b> ${badge(m.status, m.status==='SENT'?'good':m.status==='REJECTED'?'bad':'warn')}
+    ${m.subject?`<div><i>${m.subject}</i></div>`:''}
+    <pre>${m.body}</pre>
+    <div class="row">
+      <button class="good" data-m="${m.id}" data-a="approve" ${m.status!=='PENDING_APPROVAL'?'disabled':''}>Approve</button>
+      <button class="bad" data-m="${m.id}" data-a="reject" ${m.status!=='PENDING_APPROVAL'?'disabled':''}>Reject</button>
+      <button class="ghost" data-m="${m.id}" data-a="send" ${m.status!=='APPROVED'?'disabled':''}>Send</button>
+    </div></div>`).join('');
+  box.querySelectorAll('button[data-m]').forEach(btn => btn.onclick = async () => {
+    try {
+      await api(`/api/v1/outreach/${btn.dataset.m}/${btn.dataset.a}`, {method:'POST', body:'{}'});
+      toast(btn.dataset.a + ' ok'); loadOutreach(id);
+    } catch(e){ toast(e.message); }
+  });
+}
+
+boot();
+</script>
+</body>
+</html>
