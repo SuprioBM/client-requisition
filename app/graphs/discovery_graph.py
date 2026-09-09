@@ -34,6 +34,21 @@ log = get_logger(__name__)
 
 _WEB_PROVIDERS = {ProviderName.DUCKDUCKGO, ProviderName.BRAVE}
 
+# Ordered stage names as reported in state["stage"] — drives the dashboard pipeline view.
+DISCOVERY_STAGES = [
+    "validate_search",
+    "resolve_location",
+    "plan_queries",
+    "google_places_discovery",
+    "duckduckgo_discovery",
+    "brave_discovery",
+    "aggregate",
+    "normalize",
+    "clean",
+    "deduplicate",
+    "save",
+]
+
 
 def _providers_by_name() -> dict[ProviderName, Any]:
     return {p.name: p for p in build_discovery_providers()}

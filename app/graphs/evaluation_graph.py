@@ -36,6 +36,22 @@ log = get_logger(__name__)
 
 SENDER_NAME = os.environ.get("OUTREACH_SENDER_NAME", "Suprio")
 
+EVALUATION_STAGES = [
+    "load_prospect",
+    "research_business",
+    "collect_evidence",
+    "detect_pain_points",
+    "map_solutions",
+    "evaluate_opportunity",
+    "score_lead",
+    "finalize_evaluation",
+    "generate_outreach_strategy",
+    "generate_email",
+    "generate_whatsapp",
+    "persist_outreach",
+    "human_approval",
+]
+
 
 async def load_prospect(state: EvaluationState) -> dict:
     async with session_scope() as s:

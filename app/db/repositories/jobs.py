@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import ErrorCode
@@ -42,6 +42,46 @@ class JobRepository:
 
     async def get_or_none(self, job_id: str) -> Job | None:
         return await self.s.get(Job, job_id)
+
+    async def query(
+        self,
+        *,
+        status: str | None = None,
+        job_type: str | None = None,
+        active_only: bool = False,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> tuple[list[Job], int]:
+        stmt = select(Job)
+        if status:
+            stmt = stmt.where(Job.status == status)
+        if job_type:
+            stmt = stmt.where(Job.job_type == job_type)
+        if active_only:
+            stmt = stmt.where(Job.status.in_([JobStatus.QUEUED.value, JobStatus.RUNNING.value]))
+        total = await self.s.scalar(select(func.count()).select_from(stmt.subquery())) or 0
+        stmt = stmt.order_by(Job.created_at.desc()).limit(limit).offset(offset)
+        rows = list((await self.s.execute(stmt)).scalars())
+        return rows, int(total)
+
+    async def count_by_status(self) -> dict[str, int]:
+        rows = await self.s.execute(select(Job.status, func.count()).group_by(Job.status))
+        return {status: int(n) for status, n in rows}
+
+    async def retry(self, job: Job) -> Job:
+        if job.status != JobStatus.FAILED.value:
+            raise JobError(
+                f"Only FAILED jobs can be retried (job is {job.status})",
+                code=ErrorCode.JOB_INVALID_STATE,
+                context={"job_id": job.id},
+            )
+        job.retry_count = 0
+        job.error_code = None
+        job.error_message = None
+        job.lease_owner = None
+        job.lease_expires_at = None
+        await self.transition(job, JobStatus.QUEUED)
+        return job
 
     async def transition(self, job: Job, new: JobStatus) -> Job:
         current = JobStatus(job.status)

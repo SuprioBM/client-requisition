@@ -1,12 +1,16 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.api.dependencies import db_session, require_api_key
 from app.core.errors import ErrorCode
 from app.core.exceptions import NotFoundError
+from app.db.models.enums import OutreachEventType
+from app.db.models.outreach import OutreachMessage
 from app.db.models.prospect import Prospect
 from app.db.repositories.outreach import OutreachRepository
 from app.schemas.common import ok
@@ -31,6 +35,12 @@ class SendBody(BaseModel):
     override_duplicate: bool = False
 
 
+class SaveDraftBody(BaseModel):
+    actor: str = "operator"
+    subject: str | None = None
+    body: str | None = None
+
+
 def _msg_payload(m) -> dict:  # type: ignore[no-untyped-def]
     return {
         "id": m.id,
@@ -50,6 +60,40 @@ def _msg_payload(m) -> dict:  # type: ignore[no-untyped-def]
         ],
         "created_at": m.created_at,
     }
+
+
+@router.get("/outreach")
+async def list_all_outreach(
+    session: AsyncSession = Depends(db_session),
+    status: str | None = None,
+    channel: str | None = None,
+    limit: int = Query(100, ge=1, le=500),
+    offset: int = Query(0, ge=0),
+) -> dict:
+    stmt = select(OutreachMessage).options(selectinload(OutreachMessage.events))
+    if status:
+        stmt = stmt.where(OutreachMessage.status == status)
+    if channel:
+        stmt = stmt.where(OutreachMessage.channel == channel)
+    total = await session.scalar(select(func.count()).select_from(stmt.subquery())) or 0
+    stmt = stmt.order_by(OutreachMessage.created_at.desc()).limit(limit).offset(offset)
+    rows = list((await session.execute(stmt)).scalars())
+
+    # enrich with business name + score
+    prospect_ids = {m.prospect_id for m in rows}
+    names: dict[str, tuple[str, int | None]] = {}
+    if prospect_ids:
+        for p in (
+            await session.execute(select(Prospect).where(Prospect.id.in_(prospect_ids)))
+        ).scalars():
+            names[p.id] = (p.business_name, None)
+
+    items = []
+    for m in rows:
+        payload = _msg_payload(m)
+        payload["business_name"] = names.get(m.prospect_id, ("(unknown)", None))[0]
+        items.append(payload)
+    return ok({"items": items, "total": int(total), "limit": limit, "offset": offset})
 
 
 @router.get("/prospects/{prospect_id}/outreach")
@@ -116,6 +160,31 @@ async def get_message(message_id: str, session: AsyncSession = Depends(db_sessio
     if msg is None:
         raise NotFoundError("Outreach message not found", code=ErrorCode.NOT_FOUND)
     return ok(_msg_payload(msg))
+
+
+@router.patch("/outreach/{message_id}", dependencies=[Depends(require_api_key)])
+async def save_outreach_draft(
+    message_id: str, body: SaveDraftBody, session: AsyncSession = Depends(db_session)
+) -> dict:
+    repo = OutreachRepository(session)
+    msg = await repo.get(message_id)
+    if msg is None:
+        raise NotFoundError("Outreach message not found", code=ErrorCode.NOT_FOUND)
+    if msg.status not in ("PENDING_APPROVAL", "DRAFTED"):
+        from app.core.exceptions import OutreachError
+
+        raise OutreachError(
+            f"Message is {msg.status}; cannot edit", code=ErrorCode.OUTREACH_NOT_APPROVED,
+            http_status=409,
+        )
+    if body.subject is not None:
+        msg.subject = body.subject
+    if body.body is not None and body.body != msg.body:
+        msg.edited_body = body.body
+    await repo._event(msg.id, OutreachEventType.EDITED, {"by": body.actor})  # noqa: SLF001
+    await session.commit()
+    refreshed = await repo.get(message_id)
+    return ok(_msg_payload(refreshed))
 
 
 @router.post("/outreach/{message_id}/approve", dependencies=[Depends(require_api_key)])

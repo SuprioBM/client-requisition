@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends
-from sqlalchemy import select
+from pydantic import BaseModel, Field
+from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -20,6 +21,23 @@ from app.services.job_service import create_and_enqueue
 router = APIRouter()
 
 
+class BulkEvalBody(BaseModel):
+    prospect_ids: list[str] = Field(min_length=1, max_length=100)
+
+
+@router.post("/bulk/evaluate", dependencies=[Depends(require_api_key)])
+async def bulk_evaluate(body: BulkEvalBody, session: AsyncSession = Depends(db_session)) -> dict:
+    jobs = []
+    for pid in body.prospect_ids:
+        if await session.get(Prospect, pid) is None:
+            continue
+        job = await create_and_enqueue(
+            session, JobType.EVALUATION, {"prospect_id": pid}, prospect_id=pid
+        )
+        jobs.append({"prospect_id": pid, "job_id": job.id})
+    return ok({"queued": jobs})
+
+
 @router.post("/{prospect_id}/evaluate", dependencies=[Depends(require_api_key)])
 async def start_evaluation(
     prospect_id: str, session: AsyncSession = Depends(db_session)
@@ -30,6 +48,20 @@ async def start_evaluation(
         session, JobType.EVALUATION, {"prospect_id": prospect_id}, prospect_id=prospect_id
     )
     return ok({"job_id": job.id, "status": job.status})
+
+
+@router.get("/{prospect_id}/evaluations")
+async def evaluation_history(
+    prospect_id: str, session: AsyncSession = Depends(db_session)
+) -> dict:
+    stmt = (
+        select(EvaluationRun)
+        .where(EvaluationRun.prospect_id == prospect_id)
+        .order_by(desc(EvaluationRun.created_at))
+        .options(selectinload(EvaluationRun.pain_points), selectinload(EvaluationRun.solutions))
+    )
+    runs = list((await session.execute(stmt)).scalars())
+    return ok([_run_payload(r) for r in runs])
 
 
 def _run_payload(run: EvaluationRun) -> dict:

@@ -33,6 +33,12 @@ class Settings(BaseSettings):
     debug: bool = True
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = "INFO"
     api_key: str | None = None
+    # comma-separated allowed origins for the browser dashboard
+    cors_origins: str = "http://localhost:3000,http://127.0.0.1:3000"
+
+    @property
+    def cors_origin_list(self) -> list[str]:
+        return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
 
     # ---- database ----
     database_url: str = "postgresql+asyncpg://requisition:requisition@localhost:5432/requisition"

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends
+from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.dependencies import db_session, require_api_key
@@ -13,6 +14,24 @@ from app.schemas.common import ok
 from app.services.job_service import create_and_enqueue
 
 router = APIRouter()
+
+
+class BulkBody(BaseModel):
+    prospect_ids: list[str] = Field(min_length=1, max_length=100)
+    force: bool = False
+
+
+@router.post("/bulk/research", dependencies=[Depends(require_api_key)])
+async def bulk_research(body: BulkBody, session: AsyncSession = Depends(db_session)) -> dict:
+    jobs = []
+    for pid in body.prospect_ids:
+        if await session.get(Prospect, pid) is None:
+            continue
+        job = await create_and_enqueue(
+            session, JobType.RESEARCH, {"prospect_id": pid, "force": body.force}, prospect_id=pid
+        )
+        jobs.append({"prospect_id": pid, "job_id": job.id})
+    return ok({"queued": jobs})
 
 
 @router.post("/{prospect_id}/research", dependencies=[Depends(require_api_key)])

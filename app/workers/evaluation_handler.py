@@ -7,10 +7,33 @@ from app.db.models.enums import JobStatus, JobType
 from app.db.repositories.jobs import JobRepository
 from app.db.session import session_scope
 from app.graphs.checkpointer import checkpointer_scope
-from app.graphs.evaluation_graph import build_evaluation_graph
+from app.graphs.evaluation_graph import EVALUATION_STAGES, build_evaluation_graph
 from app.workers.jobs import _set_stage, handler
 
 log = get_logger(__name__)
+
+
+async def _persist_progress(job_id: str, state: dict) -> None:
+    stage = state.get("stage")
+    if not stage:
+        return
+    try:
+        idx = EVALUATION_STAGES.index(stage)
+        percent = int(5 + (idx + 1) / len(EVALUATION_STAGES) * 90)
+    except ValueError:
+        percent = None
+    async with session_scope() as s:
+        job = await JobRepository(s).get_or_none(job_id)
+        if job is None:
+            return
+        job.current_stage = stage
+        prog: dict = {"stage": stage, "percent": percent}
+        prog["counters"] = {
+            "evidence": len(state.get("evidence", [])),
+            "pain_points": len(state.get("pain_points", [])),
+            "solutions": len(state.get("solutions", [])),
+        }
+        job.progress = prog
 
 
 @handler(JobType.EVALUATION)
@@ -31,10 +54,13 @@ async def run_evaluation_job(job_id: str) -> None:
         "warnings": [],
         "errors": [],
     }
+    final_state: dict = {}
     async with checkpointer_scope() as cp:
         graph = build_evaluation_graph(checkpointer=cp)
         config = {"configurable": {"thread_id": job_id}, "recursion_limit": 50}
-        final_state = await graph.ainvoke(initial, config=config)
+        async for chunk in graph.astream(initial, config=config, stream_mode="values"):
+            final_state = chunk
+            await _persist_progress(job_id, chunk)
 
     if final_state.get("errors"):
         raise AppError(
