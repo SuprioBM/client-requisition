@@ -35,10 +35,11 @@ const PROSPECT_VARIANT: Partial<Record<ProspectStatus, Parameters<typeof Badge>[
   ARCHIVED: "neutral",
 };
 
-export function ProspectStatusBadge({ status }: { status: ProspectStatus }) {
+export function ProspectStatusBadge({ status }: { status: ProspectStatus | string | undefined }) {
+  const s = status ?? "unknown";
   return (
-    <Badge variant={PROSPECT_VARIANT[status] ?? "neutral"}>
-      {status.replace(/_/g, " ").toLowerCase()}
+    <Badge variant={PROSPECT_VARIANT[s as ProspectStatus] ?? "neutral"}>
+      {s.replace(/_/g, " ").toLowerCase()}
     </Badge>
   );
 }
@@ -68,10 +69,11 @@ const CONFIDENCE_VARIANT: Record<Confidence, Parameters<typeof Badge>[0]["varian
   NOT_ENOUGH_EVIDENCE: "neutral",
 };
 
-export function ConfidenceBadge({ confidence }: { confidence: Confidence }) {
+export function ConfidenceBadge({ confidence }: { confidence: Confidence | string | undefined }) {
+  const c = confidence ?? "NOT_ENOUGH_EVIDENCE";
   return (
-    <Badge variant={CONFIDENCE_VARIANT[confidence] ?? "neutral"}>
-      {confidence.replace(/_/g, " ").toLowerCase()}
+    <Badge variant={CONFIDENCE_VARIANT[c as Confidence] ?? "neutral"}>
+      {c.replace(/_/g, " ").toLowerCase()}
     </Badge>
   );
 }

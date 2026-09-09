@@ -16,11 +16,15 @@ there a real opportunity?) · **Outreach** (start the conversation).
 
 ---
 
-## Status: V1 complete
+## Status: V1 complete — backend + operations dashboard
 
 All phases implemented, wired end to end, and exercised against the real Google
-Places + Groq APIs. 83 automated tests pass with **zero paid services**
-(SQLite + `fakeredis` + `respx` + a fake LLM). `ruff` and `mypy` clean.
+Places + Groq APIs through the Next.js dashboard.
+
+- **Backend**: 92 tests pass with **zero paid services** (SQLite + `fakeredis` +
+  `respx` + a fake LLM). `ruff` and `mypy` clean.
+- **Frontend** (`web/`): 14 vitest unit tests + 2 Playwright e2e flows pass;
+  `tsc` + `eslint` clean; `next build` succeeds.
 
 | Area | State |
 |---|---|
@@ -39,10 +43,10 @@ Places + Groq APIs. 83 automated tests pass with **zero paid services**
 | Outreach strategy + email + WhatsApp drafts | ✅ |
 | Human approval workflow, duplicate protection, follow-up tracking | ✅ |
 | Sending behind an interface (Null / SMTP) — never a fake `SENT` | ✅ |
-| Minimal operator UI at `/` | ✅ |
-| Tests (unit / integration / failure), Docker, docs | ✅ |
+| Next.js operations dashboard (`web/`) — real-time SSE, no manual refresh | ✅ |
+| Tests (unit / integration / failure / frontend / e2e), Docker, docs | ✅ |
 
-See `docs/` for detail on each phase.
+See `docs/` for detail on each phase and `web/README.md` for the dashboard.
 
 ---
 
@@ -105,12 +109,32 @@ Postgres + Redis + API (migrates first) + worker.
 python -m app.workers.worker
 ```
 
+## Operations dashboard (`web/`)
+
+```bash
+cd web
+npm install
+cp .env.example .env.local        # BACKEND_URL + optional BACKEND_API_KEY (server-only)
+npm run dev                        # http://localhost:3000
+```
+
+The browser only ever talks to a same-origin Next proxy (`/api/backend/*`), which
+injects the backend URL and API key server-side — no secret or CORS config
+reaches the client, and SSE is streamed through unchanged. See `web/README.md`.
+
 ## Tests / checks
 
 ```bash
-pytest -q            # 83 tests, no paid services
+# backend
+pytest -q            # 92 tests, no paid services
 ruff check app
 mypy app
+
+# frontend (in web/)
+npm run test         # vitest unit tests
+npm run e2e          # Playwright e2e (mocked backend)
+npm run typecheck
+npm run build
 ```
 
 ## Real end-to-end smoke test (uses your real API keys, costs a few calls)

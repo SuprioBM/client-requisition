@@ -159,9 +159,16 @@ async def get_profile(prospect_id: str, session: AsyncSession = Depends(db_sessi
                 "signals": research.signals,
                 "social_profiles": research.social_profiles,
                 "evidence": [
-                    {"id": e.id, "observation": e.observation, "confidence": e.confidence,
-                     "source_url": e.source_url, "source": e.source_type,
-                     "collected_at": e.collected_at}
+                    {
+                        "id": e.id,
+                        "type": e.evidence_type,
+                        "source": e.source_type,
+                        "source_url": e.source_url,
+                        "observation": e.observation,
+                        "confidence": e.confidence,
+                        "data_origin": e.data_origin,
+                        "collected_at": e.collected_at,
+                    }
                     for e in research.evidence
                 ],
             },

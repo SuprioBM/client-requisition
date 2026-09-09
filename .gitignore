@@ -35,3 +35,9 @@ web/test-results/
 web/.next/
 web/next-env.d.ts
 web/tsconfig.tsbuildinfo
+web/.env*.local
+
+# runtime artifacts
+requisition.db
+*.db-journal
+scratchpad/

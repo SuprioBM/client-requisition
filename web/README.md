@@ -1,36 +1,85 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Client Requisition Agent — Operations Dashboard
 
-## Getting Started
+Real-time lead-intelligence dashboard for the FastAPI backend in `../`. Lets an
+operator create discovery jobs, watch the discovery → research → evaluation →
+outreach pipeline run live, inspect every prospect's evidence and scoring, and
+review / edit / approve generated outreach.
 
-First, run the development server:
+## Stack
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+- Next.js 15 (App Router) · React 19 · TypeScript
+- Tailwind CSS + hand-rolled shadcn/ui primitives + Radix
+- TanStack Query (server state) + TanStack Table (data grid)
+- sonner (toasts) · next-themes (dark default)
+- vitest + Testing Library (unit) · Playwright (e2e)
+
+## Architecture
+
+```
+browser ──(same-origin)──► Next proxy /api/backend/[...path] ──► FastAPI (BACKEND_URL)
+                                       + X-API-Key (BACKEND_API_KEY, server-only)
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+The browser never sees the backend origin or API key. The proxy
+(`src/app/api/backend/[...path]/route.ts`) forwards method/body/query and streams
+the response body unchanged, so Server-Sent Events (`/jobs/{id}/stream`) work
+through it.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+- **API layer**: `src/lib/api/{client,endpoints,types}.ts` — one typed function
+  per endpoint, no scattered `fetch()`.
+- **Server state**: `src/lib/query/{keys,hooks}.ts` — every query keyed and
+  invalidated deliberately; adaptive polling (fast while jobs are active, slow
+  when idle).
+- **Real-time**: `src/lib/realtime/use-job-stream.ts` — subscribes to the job SSE
+  stream and pushes updates into the query cache, invalidating dependent views so
+  tables update with no manual refresh. `useJob(id,{poll:true})` is the fallback.
+- **States**: `src/components/shared/states.tsx` `QueryBoundary` renders
+  loading / error / empty / content for every fetch; `ErrorPanel` + retry;
+  `app/error.tsx` is a per-section error boundary.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Pages
 
-## Learn More
+| Route | Purpose |
+|---|---|
+| `/` | Dashboard: system status, KPI cards, active jobs, live prospect stream, activity feed |
+| `/discover` | Discovery form + query-plan preview |
+| `/jobs` · `/jobs/[id]` | Job list · live job monitor (pipeline stages, provider status, error panel + retry, result) |
+| `/prospects` · `/prospects/[id]` | Data grid (sort/filter/search/columns/bulk research+evaluate/pagination) · full intelligence page |
+| `/research` · `/evaluation` | Provider/research analytics · evaluated prospects by score |
+| `/outreach` · `/outreach/[id]` | Tabbed by status · review with email/WhatsApp editors, channel previews, explicit approve/reject confirmation, send |
+| `/settings` | Read-only backend runtime config (no secrets) |
 
-To learn more about Next.js, take a look at the following resources:
+## Setup
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+```bash
+npm install
+cp .env.example .env.local        # BACKEND_URL, optional BACKEND_API_KEY
+npm run dev                        # http://localhost:3000
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+`.env.local` (server-only — no `NEXT_PUBLIC_` prefix):
 
-## Deploy on Vercel
+```
+BACKEND_URL=http://localhost:8000
+BACKEND_API_KEY=                   # set to match the backend's API_KEY in production
+```
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Commands
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+```bash
+npm run dev          # dev server
+npm run build        # production build
+npm run test         # vitest unit tests
+npm run e2e          # Playwright e2e (spins its own dev server on :3100, mocks the backend)
+npm run typecheck    # tsc --noEmit
+npm run lint         # next lint
+```
+
+## Notes
+
+- AI-generated text is rendered as **plain text only** (no `dangerouslySetInnerHTML`).
+- External links are validated to `http(s)` before opening.
+- Nothing is sent without an explicit operator action; approval shows a
+  confirmation dialog and only `APPROVED` messages can be sent.
+- No business logic lives here — discovery, research, LLM, scoring, dedup all
+  stay in the backend.

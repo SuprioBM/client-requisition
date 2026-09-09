@@ -33,17 +33,17 @@ export function EvidenceList({
           <div className="mb-1.5 flex items-center justify-between gap-2">
             <div className="flex items-center gap-2">
               <Badge variant="neutral" className="font-mono text-[10px]">
-                {e.type.replace(/_/g, " ").toLowerCase()}
+                {(e.type ?? "evidence").replace(/_/g, " ").toLowerCase()}
               </Badge>
               <Badge variant="outline" className="text-[10px]">
-                {e.data_origin.toLowerCase()}
+                {(e.data_origin ?? "verified").toLowerCase()}
               </Badge>
             </div>
-            <EvidenceConfidence value={e.confidence} />
+            <EvidenceConfidence value={e.confidence ?? 0} />
           </div>
           <p className="text-sm">{e.observation}</p>
           <div className="mt-1.5 flex items-center gap-3 text-[11px] text-muted-foreground">
-            <span>{e.source}</span>
+            <span>{e.source ?? "—"}</span>
             {safeExternalUrl(e.source_url) && (
               <a
                 href={safeExternalUrl(e.source_url)!}
@@ -55,7 +55,7 @@ export function EvidenceList({
               </a>
             )}
             <span>{formatDateTime(e.collected_at)}</span>
-            <span className="font-mono opacity-60">{e.id.slice(0, 8)}</span>
+            <span className="font-mono opacity-60">{(e.id ?? "").slice(0, 8)}</span>
           </div>
         </div>
       ))}

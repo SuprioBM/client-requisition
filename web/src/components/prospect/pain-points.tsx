@@ -29,7 +29,9 @@ export function PainPoints({
         return (
           <div key={pp.id} className="flex flex-col rounded-lg border p-3">
             <div className="mb-1.5 flex items-center justify-between gap-2">
-              <Badge variant="neutral">{pp.category.replace(/_/g, " ").toLowerCase()}</Badge>
+              <Badge variant="neutral">
+                {(pp.category ?? "").replace(/_/g, " ").toLowerCase()}
+              </Badge>
               <ConfidenceBadge confidence={pp.confidence} />
             </div>
             <p className="font-medium">{pp.title}</p>

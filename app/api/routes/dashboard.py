@@ -72,6 +72,8 @@ async def dashboard_stats(session: AsyncSession = Depends(db_session)) -> dict:
     }
 
     high_opp = await _count(EvaluationRun, EvaluationRun.score_total >= 70)
+    researched_total = await _count(Prospect, Prospect.last_researched_at.is_not(None))
+    evaluated_total = await _count(Prospect, Prospect.last_evaluated_at.is_not(None))
 
     return ok(
         {
@@ -79,10 +81,9 @@ async def dashboard_stats(session: AsyncSession = Depends(db_session)) -> dict:
                 "total": sum(prospect_by_status.values()),
                 "by_status": prospect_by_status,
                 "new": prospect_by_status.get(ProspectStatus.DISCOVERED.value, 0),
-                "researching": prospect_by_status.get(ProspectStatus.RESEARCHING.value, 0)
-                + prospect_by_status.get(ProspectStatus.RESEARCHED.value, 0),
+                "researching": researched_total,
                 "evaluating": prospect_by_status.get(ProspectStatus.EVALUATING.value, 0),
-                "evaluated": prospect_by_status.get(ProspectStatus.EVALUATED.value, 0),
+                "evaluated": evaluated_total,
                 "outreach_ready": prospect_by_status.get(ProspectStatus.OUTREACH_DRAFTED.value, 0)
                 + prospect_by_status.get(ProspectStatus.OUTREACH_APPROVED.value, 0),
                 "contacted": prospect_by_status.get(ProspectStatus.CONTACTED.value, 0),

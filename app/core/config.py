@@ -7,14 +7,17 @@ capability summary for optional/feature-specific ones.
 
 from __future__ import annotations
 
+import re
 import sys
 from enum import Enum
 from functools import lru_cache
 from typing import Literal
 
 from pydantic import ValidationError as PydanticValidationError
-from pydantic import field_validator
+from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+_INLINE_COMMENT = re.compile(r"\s+#\s.*$")
 
 
 class AppEnv(str, Enum):
@@ -85,6 +88,25 @@ class Settings(BaseSettings):
         if self.run_embedded_worker is not None:
             return self.run_embedded_worker
         return self.app_env == AppEnv.development
+
+    @model_validator(mode="before")
+    @classmethod
+    def _strip_inline_comments(cls, data: dict) -> dict:
+        """Defensive: some .env files carry `KEY=value  # comment`; pydantic-settings
+        does not always strip these. Trim a trailing ` # ...` and surrounding
+        whitespace from raw string values so config is robust to messy .env files."""
+        if not isinstance(data, dict):
+            return data
+        cleaned: dict = {}
+        for k, v in data.items():
+            if isinstance(v, str):
+                v2 = _INLINE_COMMENT.sub("", v).strip()
+                if v2.startswith("#"):
+                    v2 = ""
+                cleaned[k] = v2
+            else:
+                cleaned[k] = v
+        return cleaned
 
     @field_validator("database_url")
     @classmethod
